@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Task Manager - DevOps Lab</title>
+<style>
+  :root { --bg:#0f172a; --card:#1e293b; --text:#e2e8f0; --muted:#94a3b8; --accent:#38bdf8; --ok:#4ade80; --danger:#f87171; }
+  * { box-sizing: border-box; }
+  body { margin:0; font-family: system-ui, Segoe UI, Roboto, sans-serif; background:var(--bg); color:var(--text); }
+  .wrap { max-width: 720px; margin: 0 auto; padding: 32px 16px; }
+  header { display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px; margin-bottom:24px; }
+  h1 { margin:0; font-size:1.6rem; }
+  .badge { background:var(--accent); color:#0f172a; font-weight:700; padding:4px 12px; border-radius:999px; font-size:.85rem; }
+  .card { background:var(--card); border-radius:12px; padding:20px; margin-bottom:20px; }
+  .info { display:grid; grid-template-columns:repeat(auto-fit,minmax(140px,1fr)); gap:12px; }
+  .info div span { display:block; color:var(--muted); font-size:.75rem; text-transform:uppercase; letter-spacing:.05em; }
+  .info div strong { font-size:.95rem; word-break:break-all; }
+  form { display:flex; gap:8px; }
+  input[type=text] { flex:1; padding:12px; border-radius:8px; border:1px solid #334155; background:#0f172a; color:var(--text); font-size:1rem; }
+  button { cursor:pointer; border:0; border-radius:8px; padding:12px 18px; font-weight:600; background:var(--accent); color:#0f172a; }
+  ul { list-style:none; margin:0; padding:0; }
+  li { display:flex; align-items:center; gap:12px; padding:12px 0; border-bottom:1px solid #334155; }
+  li:last-child { border-bottom:0; }
+  li.done .title { text-decoration:line-through; color:var(--muted); }
+  .title { flex:1; }
+  .del { background:transparent; color:var(--danger); padding:4px 10px; }
+  .empty { color:var(--muted); text-align:center; padding:12px; }
+  .stats { color:var(--muted); font-size:.9rem; margin-top:12px; }
+  .error { color:var(--danger); margin-top:8px; min-height:1.2em; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>Task Manager</h1>
+    <span class="badge" id="version">...</span>
+  </header>
+
+  <div class="card">
+    <div class="info">
+      <div><span>Container / Host</span><strong id="hostname">...</strong></div>
+      <div><span>Commit</span><strong id="commit">...</strong></div>
+      <div><span>Uptime</span><strong id="uptime">...</strong></div>
+      <div><span>Health</span><strong id="health">...</strong></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <form id="add-form">
+      <input type="text" id="title" placeholder="Add a new task..." maxlength="100" autocomplete="off">
+      <button type="submit">Add</button>
+    </form>
+    <div class="error" id="error"></div>
+    <ul id="list"></ul>
+    <div class="stats" id="stats"></div>
+  </div>
+</div>
+
+<script>
+async function api(path, options) {
+  const res = await fetch(path, options);
+  if (res.status === 204) return null;
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error || "Request failed");
+  return data;
+}
+
+function fmtUptime(s) {
+  const m = Math.floor(s / 60);
+  return m < 1 ? s + "s" : m + "m " + (s % 60) + "s";
+}
+
+async function loadInfo() {
+  try {
+    const info = await api("/api/info");
+    document.getElementById("version").textContent = info.version;
+    document.getElementById("hostname").textContent = info.hostname;
+    document.getElementById("commit").textContent = info.commit;
+    document.getElementById("uptime").textContent = fmtUptime(info.uptime_seconds);
+    const h = await api("/health");
+    const el = document.getElementById("health");
+    el.textContent = h.status.toUpperCase();
+    el.style.color = "var(--ok)";
+  } catch (e) {
+    const el = document.getElementById("health");
+    el.textContent = "DOWN";
+    el.style.color = "var(--danger)";
+  }
+}
+
+async function loadTasks() {
+  const tasks = await api("/api/tasks");
+  const list = document.getElementById("list");
+  list.innerHTML = "";
+  if (tasks.length === 0) {
+    const li = document.createElement("li");
+    li.className = "empty";
+    li.textContent = "No tasks yet. Add one above.";
+    list.appendChild(li);
+  }
+  tasks.forEach(t => {
+    const li = document.createElement("li");
+    if (t.done) li.className = "done";
+    const cb = document.createElement("input");
+    cb.type = "checkbox";
+    cb.checked = t.done;
+    cb.onchange = async () => {
+      await api("/api/tasks/" + t.id, {method:"PUT", headers:{"Content-Type":"application/json"}, body:JSON.stringify({done:cb.checked})});
+      loadTasks();
+    };
+    const span = document.createElement("span");
+    span.className = "title";
+    span.textContent = t.title;
+    const del = document.createElement("button");
+    del.className = "del";
+    del.textContent = "Delete";
+    del.onclick = async () => { await api("/api/tasks/" + t.id, {method:"DELETE"}); loadTasks(); };
+    li.append(cb, span, del);
+    list.appendChild(li);
+  });
+  const done = tasks.filter(t => t.done).length;
+  document.getElementById("stats").textContent = tasks.length + " total, " + done + " completed";
+}
+
+document.getElementById("add-form").onsubmit = async (e) => {
+  e.preventDefault();
+  const input = document.getElementById("title");
+  const err = document.getElementById("error");
+  err.textContent = "";
+  try {
+    await api("/api/tasks", {method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({title:input.value})});
+    input.value = "";
+    loadTasks();
+  } catch (ex) { err.textContent = ex.message; }
+};
+
+loadInfo(); loadTasks();
+setInterval(loadInfo, 5000);
+</script>
+</body>
+</html>
