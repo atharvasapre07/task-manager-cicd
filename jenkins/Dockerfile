@@ -4,7 +4,7 @@ USER root
 
 # Docker CLI (talks to the host Docker through the mounted socket), Python for the tests, tools for the AWS CLI
 RUN apt-get update && \
-    apt-get install -y --no-install-recommends docker.io python3 python3-pip python3-venv curl unzip && \
+    apt-get install -y --no-install-recommends docker.io docker-cli python3 python3-pip python3-venv curl unzip && \
     rm -rf /var/lib/apt/lists/*
 
 # AWS CLI v2
