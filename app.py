@@ -8,7 +8,7 @@ from flask import Flask, jsonify, render_template, request
 app = Flask(__name__)
 
 # Bump this when you demonstrate a code change through the pipeline.
-VERSION = "v2"
+VERSION = "v3"
 COMMIT = os.environ.get("GIT_COMMIT", "local")
 START_TIME = time.time()
 
